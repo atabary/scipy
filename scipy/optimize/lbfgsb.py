@@ -26,7 +26,7 @@
 
 from numpy import array, asarray, float64, int32, zeros
 import _lbfgsb
-from optimize import approx_fprime
+from optimize import approx_fprime, MemoizeJac
 from numpy.compat import asbytes
 
 __all__ = ['fmin_l_bfgs_b']
@@ -107,26 +107,35 @@ def fmin_l_bfgs_b(func, x0, fprime=None, args=(),
         * d['grad'] is the gradient at the minimum (should be 0 ish)
         * d['funcalls'] is the number of function calls made.
 
+    See also
+    --------
+    minimize: Interface to minimization algorithms for multivariate
+        functions. See the 'L-BFGS-B' `method` in particular.
+
     Notes
     -----
     License of L-BFGS-B (Fortran code):
 
-    The version included here (in fortran code) is 2.1 (released in 1997).
+    The version included here (in fortran code) is 3.0 (released April 25, 2011).
     It was written by Ciyou Zhu, Richard Byrd, and Jorge Nocedal
     <nocedal@ece.nwu.edu>. It carries the following condition for use:
 
     This software is freely available, but we expect that all publications
-    describing work using this software , or all commercial products using it,
-    quote at least one of the references given below.
+    describing work using this software, or all commercial products using it,
+    quote at least one of the references given below. This software is released
+    under the BSD License.
 
     References
     ----------
     * R. H. Byrd, P. Lu and J. Nocedal. A Limited Memory Algorithm for Bound
       Constrained Optimization, (1995), SIAM Journal on Scientific and
-      Statistical Computing , 16, 5, pp. 1190-1208.
+      Statistical Computing, 16, 5, pp. 1190-1208.
     * C. Zhu, R. H. Byrd and J. Nocedal. L-BFGS-B: Algorithm 778: L-BFGS-B,
       FORTRAN routines for large scale bound constrained optimization (1997),
-      ACM Transactions on Mathematical Software, Vol 23, Num. 4, pp. 550 - 560.
+      ACM Transactions on Mathematical Software, 23, 4, pp. 550 - 560.
+    * J.L. Morales and J. Nocedal. L-BFGS-B: Remark on Algorithm 778: L-BFGS-B,
+      FORTRAN routines for large scale bound constrained optimization (2011),
+      ACM Transactions on Mathematical Software, 38, 1.
 
     """
     # handle fprime/approx_grad
@@ -134,10 +143,8 @@ def fmin_l_bfgs_b(func, x0, fprime=None, args=(),
         fun = func
         jac = None
     elif fprime is None:
-        def fun(x):
-            return func(x, *args)[0]
-        def jac(x):
-            return func(x, *args)[1]
+        fun = MemoizeJac(func)
+        jac = fun.derivative
     else:
         fun = func
         jac = fprime
@@ -252,7 +259,7 @@ def _minimize_lbfgsb(fun, x0, args=(), jac=None, bounds=None, options={},
     x = array(x0, float64)
     f = array(0.0, float64)
     g = zeros((n,), float64)
-    wa = zeros(2*m*n+4*n + 12*m**2 + 12*m, float64)
+    wa = zeros(2*m*n + 5*n + 11*m*m + 8*m, float64)
     iwa = zeros(3*n, int32)
     task = zeros(1, 'S60')
     csave = zeros(1,'S60')
@@ -329,6 +336,11 @@ if __name__ == '__main__':
     def func_and_grad(x):
         return func(x), grad(x)
 
+
+    class Problem(object):
+        def fun(self, x):
+            return func_and_grad(x)
+
     factr = 1e7
     pgtol = 1e-5
 
@@ -355,6 +367,12 @@ if __name__ == '__main__':
     print f
     print d
     x, f, d = fmin_l_bfgs_b(func_and_grad, x0, approx_grad=0,
+                            m=m, factr=factr, pgtol=pgtol)
+    print x
+    print f
+    print d
+    p = Problem()
+    x, f, d = fmin_l_bfgs_b(p.fun, x0, approx_grad=0,
                             m=m, factr=factr, pgtol=pgtol)
     print x
     print f
